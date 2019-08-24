@@ -1,0 +1,31 @@
+# Sample .gitignore file, place this in the top level of your git repository
+# Add any additional patterns for files to ignore after this line
+
+# ---------- Some standard ignore rules --------------
+# You probably want to leave the rest of this file as-is.
+
+# ignore backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# ignore configuration files
+*.cfg
+*.config
+.settings
+
+# ignore generated files
+*.o
+*.pyc
+*.exe
+*.class
+
+# temporary files
+*.log
+*.lock
+*.tmp
+
+# And some miscellaneous other things
+**/node_modules
+**/packages
