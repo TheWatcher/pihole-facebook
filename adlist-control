@@ -135,4 +135,4 @@ foreach my $url (@remove) {
 save_file($adlists, $data);
 
 print "Refreshing pi-hole\n";
-print `pihole -g`;
+print `/usr/local/bin/pihole -g`;
