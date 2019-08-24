@@ -1,0 +1,138 @@
+#!/usr/bin/env perl
+
+use v5.14;
+use strict;
+use Getopt::Long;
+use Pod::Usage;
+
+## @fn $ load_file($name)
+# Load the contents of the specified file into memory. This will attempt to
+# open the specified file and read the contents into a string. This should be
+# used for all file reads whenever possible to ensure there are no internal
+# problems with UTF-8 encoding screwups.
+#
+# @param name The name of the file to load into memory.
+# @return The string containing the file contents, or undef on error. If this
+#         returns undef, $! should contain the reason why.
+sub load_file {
+    my $name = shift;
+
+    if(open(INFILE, "<:utf8", $name)) {
+        undef $/;
+        my $lines = <INFILE>;
+        $/ = "\n";
+        close(INFILE)
+            or return undef;
+
+        return $lines;
+    }
+    return undef;
+}
+
+
+## @fn $ save_file($name, $data)
+# Save the specified string into a file. This will attempt to open the specified
+# file and write the string in the second argument into it, and the file will be
+# truncated before writing.  This should be used for all file saves whenever
+# possible to ensure there are no internal problems with UTF-8 encoding screwups.
+#
+# @param name The name of the file to load into memory.
+# @param data The string, or string reference, to save into the file.
+# @return undef on success, otherwise this dies with an error message.
+# @note This function assumes that the data passed in the second argument is a string,
+#       and it does not do any binmode shenanigans on the file. Expect it to break if
+#       you pass it any kind of binary data, or use this on Windows.
+sub save_file {
+    my $name = shift;
+    my $data = shift;
+
+    if(open(OUTFILE, ">:utf8", $name)) {
+        print OUTFILE ref($data) ? ${$data} : $data;
+
+        close(OUTFILE)
+            or die "FATAL: Unable to close $name after write: $!\n";
+
+        return undef;
+    }
+
+    die "FATAL: Unable to open $name for writing: $!\n";
+}
+
+
+## @fn void add_url($data, $url)
+# Add the specified URL to the blocklist source list, if it is not already there.
+# This will uncomment the URL if it is present but commented out.
+#
+# @param data A reference to a scalar containing the blocklist source list.
+# @param url  The URL to add to the blocklist source list.
+sub add_url(\$$) {
+    my $data = shift;
+    my $url  = shift;
+
+    # Do nothing if the URL is already there
+    return if($$data =~ /^\s*$url/i);
+
+    # Is the URL already present, but commented out?
+    if($$data =~ /^#\s*$url/im) {
+        $$data =~ s/^#\s*$url/$url/im;
+
+    # No, add it
+    } else {
+        # Add a newline if one isn't present at EOF
+        $$data .= "\n" unless($$data =~ /\n$/is);
+        $$data .= "$url\n";
+    }
+}
+
+
+## @fn void remove_url($data, $url)
+# Remove the specified URL from the blocklist source list. This will not really
+# remove the URL, but if it is present it is commented out.
+#
+# @param data A reference to a scalar containing the blocklist source list.
+# @param url  The URL to remove from the blocklist source list.
+sub remove_url(\$$) {
+    my $data = shift;
+    my $url  = shift;
+
+    # Do nothing if the URL isn't there, or is already commented out
+    return if($$data !~ /$url/i || $$data =~ /^#\s*$url/i);
+
+    # Comment the URL out
+    $$data =~ s/^\s*$url/# $url/mig;
+}
+
+
+our $adlists = '/etc/pihole/adlists.list'; # location of the blocklist list
+our $man     = 0;  # Output the manual?
+our $help    = 0;  # Output the summary options
+our @add     = (); # URLs to add from adlists
+our @remove  = (); # URLs to delete from adlists
+
+GetOptions('c|config:s'  => \$adlists,
+           'a|add:s'     => \@add,
+           'r|remove:s'  => \@remove,
+           'h|help|?'    => \$help,
+           'm|man'       => \$man);
+
+# Send back the usage if help has been requested, or there's no URLs to process.
+pod2usage(-verbose => 0) if($help || (!scalar(@add) && !scalar(@remove)));
+pod2usage(-exitstatus => 0, -verbose => 2) if $man;
+
+my $data = load_file($adlists)
+    or die "Unable to load adlists file: $!\n";
+
+foreach my $url (@add) {
+    print "Adding '$url' to '$adlists'\n";
+    add_url($data, $url);
+}
+
+foreach my $url (@remove) {
+    print "Removing '$url' from '$adlists'\n";
+    remove_url($data, $url);
+}
+
+save_file($adlists, $data);
+
+print "Refreshing pi-hole\n";
+print `pihole -g`;
